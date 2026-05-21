@@ -1,0 +1,20 @@
+# Python virtual environments
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Environment configurations and private keys
+.env
+*.local
+
+# Heavy biological data & models (Local storage only)
+data/
+*.csv
+*.png
+*.tiff
+*.h5ad
+
+# IDE settings
+.vscode/
+.idea/
