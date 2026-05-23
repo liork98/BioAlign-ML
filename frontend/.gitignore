@@ -1,10 +1,3 @@
-# macOS
-.DS_Store
-**/.DS_Store
-
-# Node
-node_modules/
-
 # Python virtual environments
 venv/
 .venv/
@@ -25,3 +18,5 @@ data/
 # IDE settings
 .vscode/
 .idea/
+
+/node_modules
