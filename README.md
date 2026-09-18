@@ -4,7 +4,7 @@ BioAlign-ML is a production-grade backend orchestration pipeline and benchmarkin
 
 Most biomedical machine learning frameworks remain trapped in fragile, non-reproducible academic scripts. BioAlign-ML bridges the gap between research and production by enforcing data integrity gates, transactional logging, scalable data streaming, and automated evaluation metrics for multimodal foundation models.
 
-## Key Architecture Features
+## Key Architecture Features 
 
 - **Strict Ingestion Gatekeeping:** Implements high-throughput data validation pipelines using Pydantic, handling high-dimensional genetic inputs with strict array-shape validation and memory-safe image processing chunks.
 - **Relational Data Lineage:** Structured PostgreSQL schema designed to record model hyper-parameters, metrics benchmarks, and deterministic version hashes ensuring full experimental reproducibility.
