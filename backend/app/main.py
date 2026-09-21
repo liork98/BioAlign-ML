@@ -1,9 +1,28 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
+from .db import init_db
+from .routers.evaluation import router as evaluation_router
+from .routers.explorer import router as explorer_router
+from .routers.health import router as health_router
+from .routers.pipeline import router as pipeline_router
 
-app = FastAPI(title="BioAlign-ML Backend Engine")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(
+    title="BioAlign-ML Backend Engine",
+    description="Multimodal Visium (H&E + spatial transcriptomics) ingestion, clustering, and benchmarking.",
+    version="2.4.0",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -13,11 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.get("/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "database": "connected",
-        "device": settings.device,
-    }
+app.include_router(health_router)
+app.include_router(pipeline_router)
+app.include_router(evaluation_router)
+app.include_router(explorer_router)

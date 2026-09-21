@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bioalign}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bioalign}
+      POSTGRES_DB: ${POSTGRES_DB:-bioalign}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - bioalign_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bioalign} -d ${POSTGRES_DB:-bioalign}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bioalign}:${POSTGRES_PASSWORD:-bioalign}@db:5432/${POSTGRES_DB:-bioalign}
+      POSTGRES_HOST: db
+      DATA_DIR: /data
+    volumes:
+      - bioalign_data:/data
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /frontend
+    volumes:
+      - ./frontend:/frontend
+    command: sh -c "corepack enable && pnpm install && pnpm dev --hostname 0.0.0.0 --port 3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  bioalign_pg:
+  bioalign_data:

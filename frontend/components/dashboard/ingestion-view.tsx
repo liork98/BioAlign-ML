@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import {
   Table,
@@ -14,17 +15,19 @@ import {
 } from "@/components/ui/table"
 import { Upload, FileImage, FileSpreadsheet, CheckCircle2, XCircle, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { apiUrl, formatElapsed, getJobs, runPublicDataset, type PipelineJob } from "@/lib/api"
 
 interface DropZoneProps {
   title: string
   description: string
   acceptedFormats: string
   icon: React.ReactNode
-  onDrop?: (files: FileList) => void
+  fieldName: string
 }
 
-function DropZone({ title, description, acceptedFormats, icon, onDrop }: DropZoneProps) {
+function DropZone({ title, description, acceptedFormats, icon, fieldName }: DropZoneProps) {
   const [isDragging, setIsDragging] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -36,15 +39,23 @@ function DropZone({ title, description, acceptedFormats, icon, onDrop }: DropZon
     setIsDragging(false)
   }, [])
 
+  const upload = useCallback(async (files: FileList) => {
+    const body = new FormData()
+    Array.from(files).forEach((file) => body.append(fieldName, file))
+    const response = await fetch(apiUrl("/pipeline/upload"), { method: "POST", body })
+    const payload = await response.json()
+    setMessage(payload.message ?? "Upload recorded")
+  }, [fieldName])
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault()
       setIsDragging(false)
-      if (e.dataTransfer.files && onDrop) {
-        onDrop(e.dataTransfer.files)
+      if (e.dataTransfer.files?.length) {
+        void upload(e.dataTransfer.files)
       }
     },
-    [onDrop]
+    [upload]
   )
 
   return (
@@ -72,6 +83,7 @@ function DropZone({ title, description, acceptedFormats, icon, onDrop }: DropZon
       <span className="mt-2 rounded-md bg-muted px-2 py-1 text-xs font-mono text-muted-foreground">
         {acceptedFormats}
       </span>
+      {message && <span className="mt-2 px-3 text-center text-xs text-muted-foreground">{message}</span>}
       {isDragging && (
         <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-primary/10">
           <Upload className="h-8 w-8 text-primary animate-bounce" />
@@ -81,54 +93,68 @@ function DropZone({ title, description, acceptedFormats, icon, onDrop }: DropZon
   )
 }
 
-const pipelineData = [
-  {
-    id: "TCGA-BH-A0B8",
-    status: "pass",
-    cudaUsage: 72,
-    elapsedTime: "4m 23s",
-  },
-  {
-    id: "TCGA-E2-A1LK",
-    status: "pass",
-    cudaUsage: 45,
-    elapsedTime: "2m 11s",
-  },
-  {
-    id: "TCGA-A2-A0T6",
-    status: "fail",
-    cudaUsage: 0,
-    elapsedTime: "0m 58s",
-  },
-  {
-    id: "TCGA-BH-A0DP",
-    status: "pass",
-    cudaUsage: 89,
-    elapsedTime: "6m 47s",
-  },
-  {
-    id: "TCGA-E2-A1LS",
-    status: "pending",
-    cudaUsage: 34,
-    elapsedTime: "1m 02s",
-  },
-]
-
 export function IngestionView() {
+  const [jobs, setJobs] = useState<PipelineJob[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      setJobs(await getJobs())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load jobs")
+    }
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+    const id = setInterval(() => void refresh(), 3000)
+    return () => clearInterval(id)
+  }, [refresh])
+
+  const startPublic = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await runPublicDataset()
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start pipeline")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
-      {/* Upload Zones */}
+      <Card className="border-border/50">
+        <CardContent className="flex items-center justify-between gap-4 pt-6">
+          <div>
+            <p className="text-sm font-medium text-foreground">Public benchmark dataset</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              10x Genomics Visium Human Breast Cancer Block A Section 1 — paired H&amp;E histology and
+              spatial transcriptomics. Metrics are computed from this download, not placeholders.
+            </p>
+          </div>
+          <Button onClick={startPublic} disabled={busy}>
+            {busy ? "Starting…" : "Run Visium pipeline"}
+          </Button>
+        </CardContent>
+      </Card>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
       <div className="grid grid-cols-2 gap-6">
         <Card className="border-border/50">
           <CardHeader className="pb-4">
             <CardTitle className="text-base">Pathology Image Stack</CardTitle>
-            <CardDescription>High-resolution tissue imaging data</CardDescription>
+            <CardDescription>Optional extra images (TIFF, PNG, DICOM)</CardDescription>
           </CardHeader>
           <CardContent>
             <DropZone
               title="Upload Pathology Images"
-              description="Drag and drop your image stack here"
+              description="Paired Visium image is loaded by the public pipeline"
               acceptedFormats="TIFF, PNG, DICOM"
+              fieldName="images"
               icon={<FileImage className="h-6 w-6" />}
             />
           </CardContent>
@@ -137,84 +163,89 @@ export function IngestionView() {
         <Card className="border-border/50">
           <CardHeader className="pb-4">
             <CardTitle className="text-base">Transcriptomic Profiles</CardTitle>
-            <CardDescription>Gene expression and molecular data</CardDescription>
+            <CardDescription>Optional extra matrices (CSV, H5AD, MTX)</CardDescription>
           </CardHeader>
           <CardContent>
             <DropZone
               title="Upload Transcriptomic Data"
-              description="Drag and drop your profiles here"
+              description="10x H5 counts come from the Visium bundle"
               acceptedFormats="CSV, H5AD, MTX"
+              fieldName="transcripts"
               icon={<FileSpreadsheet className="h-6 w-6" />}
             />
           </CardContent>
         </Card>
       </div>
 
-      {/* Pipeline Status Table */}
       <Card className="border-border/50">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">Running Pipelines</CardTitle>
-              <CardDescription>Real-time processing status for all active jobs</CardDescription>
+              <CardDescription>Jobs persisted in PostgreSQL after the ingestion gate</CardDescription>
             </div>
             <Badge variant="outline" className="font-mono">
-              {pipelineData.length} Active
+              {jobs.length} Jobs
             </Badge>
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-border/50">
-                <TableHead className="text-muted-foreground">Sample ID</TableHead>
-                <TableHead className="text-muted-foreground">Data Gate Status</TableHead>
-                <TableHead className="text-muted-foreground">CUDA Memory Usage</TableHead>
-                <TableHead className="text-muted-foreground text-right">Elapsed Time</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pipelineData.map((pipeline) => (
-                <TableRow key={pipeline.id} className="border-border/30 hover:bg-muted/30">
-                  <TableCell className="font-mono text-sm">{pipeline.id}</TableCell>
-                  <TableCell>
-                    {pipeline.status === "pass" && (
-                      <Badge className="bg-success/15 text-success border-success/30 gap-1">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Pass
-                      </Badge>
-                    )}
-                    {pipeline.status === "fail" && (
-                      <Badge className="bg-destructive/15 text-destructive border-destructive/30 gap-1">
-                        <XCircle className="h-3 w-3" />
-                        Fail
-                      </Badge>
-                    )}
-                    {pipeline.status === "pending" && (
-                      <Badge variant="secondary" className="gap-1">
-                        <Clock className="h-3 w-3" />
-                        Pending
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Progress
-                        value={pipeline.cudaUsage}
-                        className="h-2 w-24 bg-muted"
-                      />
-                      <span className="text-xs font-mono text-muted-foreground w-8">
-                        {pipeline.cudaUsage}%
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm">
-                    {pipeline.elapsedTime}
-                  </TableCell>
+          {jobs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No pipeline jobs yet. Run the Visium ingest to populate this table.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent border-border/50">
+                  <TableHead className="text-muted-foreground">Sample ID</TableHead>
+                  <TableHead className="text-muted-foreground">Data Gate Status</TableHead>
+                  <TableHead className="text-muted-foreground">Spots × genes</TableHead>
+                  <TableHead className="text-muted-foreground">CUDA Memory Usage</TableHead>
+                  <TableHead className="text-muted-foreground text-right">Elapsed Time</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {jobs.map((pipeline) => (
+                  <TableRow key={pipeline.id} className="border-border/30 hover:bg-muted/30">
+                    <TableCell className="font-mono text-sm">{pipeline.sample_id}</TableCell>
+                    <TableCell>
+                      {pipeline.status === "pass" && (
+                        <Badge className="bg-success/15 text-success border-success/30 gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Pass
+                        </Badge>
+                      )}
+                      {pipeline.status === "fail" && (
+                        <Badge className="bg-destructive/15 text-destructive border-destructive/30 gap-1">
+                          <XCircle className="h-3 w-3" />
+                          Fail
+                        </Badge>
+                      )}
+                      {pipeline.status === "pending" && (
+                        <Badge variant="secondary" className="gap-1">
+                          <Clock className="h-3 w-3" />
+                          Pending
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {pipeline.n_spots.toLocaleString()} × {pipeline.n_genes.toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Progress value={pipeline.cuda_usage_pct} className="h-2 w-24 bg-muted" />
+                        <span className="text-xs font-mono text-muted-foreground w-8">
+                          {Math.round(pipeline.cuda_usage_pct)}%
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {formatElapsed(pipeline.elapsed_ms)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
